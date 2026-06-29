@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "cmp-design-bridge/presence-contract.schema.json",
+  "title": "presence-contract.json — per-state expected presence (makes the advisory grade actionable)",
+  "description": "Fed from the app's gating logic for each state. The grader classifies a vision 'absent' finding: absent-but-listed-in-present -> HARD finding (bug); absent-and-listed-in-absentByGating -> SUPPRESSED. Closes FIXTURE/RENDER presence bugs only; gating-LOGIC regressions belong in the app's unit tests.",
+  "type": "object",
+  "required": ["states"],
+  "properties": {
+    "states": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "gatingInputs": { "type": "object", "description": "The inputs that produced this state (rank, tier, scenario, …) — documents WHY the presence list is what it is." },
+          "present": { "type": "array", "items": { "type": "string" }, "description": "Regions that MUST render for this state (dot-path tags)." },
+          "absentByGating": { "type": "array", "items": { "type": "string" }, "description": "Regions correctly ABSENT for this state (suppress vision 'missing' findings on these)." },
+          "fixtureDivergenceNotes": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

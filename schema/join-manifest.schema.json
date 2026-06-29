@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "cmp-design-bridge/join-manifest.schema.json",
+  "title": "join-manifest.json — the frameId↔stateId↔cmpCapture join (the §9.1 identity spine)",
+  "description": "One row per authored design frame. cmpCapture is DERIVED from stateId (config.captureDeriveRule); a hardcoded mismatch FAILS the lint, so a crossed row is structurally impossible. designContentHash 'auto' is stamped by lint from the live render's pull-manifest (revision pinning).",
+  "type": "object",
+  "required": ["rows"],
+  "properties": {
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["stateId", "module"],
+        "properties": {
+          "frameId": { "type": "string", "description": "Source frame identity (e.g. profile/profile-self.html)." },
+          "stateId": { "type": "string", "description": "The single key shared across frame metadata, this row, the app's UiState member, the subject (self-regression) capture name, and the coverage list." },
+          "module": { "type": "string", "description": "CMP feature-module id (matches a config.modules entry)." },
+          "cmpCapture": { "type": "string", "description": "Always 'DERIVED' (or the exact derived path). Anything else FAILS the miswire check." },
+          "designContentHash": { "type": "string", "description": "'auto' to stamp from the live render; a pinned sha256 to detect re-authoring drift." },
+          "fixtureNote": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "cmp-design-bridge/config.schema.json",
+  "title": "cmp-design-bridge per-project CONFIG root (.design-bridge/config.json)",
+  "description": "Everything project-specific the CORE CLI needs. Relative paths resolve against the config dir (including render-recipe's dsRuntimeSource + framesRoot), except cmpScreenshotRoot/playwrightFrom which resolve against repoRoot (default: config dir's parent).",
+  "type": "object",
+  "required": ["modules", "render", "joinManifest", "cmpScreenshotRoot", "captureDeriveRule"],
+  "properties": {
+    "projectId": { "type": ["string", "null"], "description": "claude.ai/design canvas project UUID (the screen-frames project; DesignSync/claude_design read target)." },
+    "designSystemProjectId": { "type": ["string", "null"], "description": "claude.ai/design PROJECT_TYPE_DESIGN_SYSTEM UUID (the component library + tokens)." },
+    "designSource": { "type": "string", "enum": ["canvas", "local-git-bundle", "cache"], "default": "canvas" },
+    "repoRoot": { "type": "string", "description": "Anchor for CMP-side paths. Default: the config dir's parent." },
+    "modules": {
+      "type": "array",
+      "description": "CMP feature modules in scope. String shorthand = { id }. captureDir is repo-relative to cmpScreenshotRoot; statePrefix defaults to '<id>-'.",
+      "items": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": "string" },
+              "captureDir": { "type": "string" },
+              "statePrefix": { "type": "string" }
+            }
+          }
+        ]
+      }
+    },
+    "cmpScreenshotRoot": { "type": "string", "description": "Repo path the app's subject screenshots (the self-regression baselines) live under (e.g. the Compose app dir)." },
+    "captureDeriveRule": { "type": "string", "description": "Template mapping stateId → subject-screenshot file. '{stateId}.png' (resolved under module.captureDir) or a full repo-relative path with {module}/{stateId}." },
+    "inventoryPath": { "type": "string", "description": "Optional state-id inventory file (one id per line — the live state list) for the burndown sweep denominator." },
+    "playwrightFrom": { "type": "string", "description": "OPTIONAL override: dir whose node_modules carries playwright. Playwright is the CLI's own dependency, so this is only for pointing at an existing install. Env PLAYWRIGHT_FROM overrides." },
+    "cacheDir": { "type": "string", "default": ".cache", "description": "Gitignored output cache (rendered PNGs, manifests, packets)." },
+    "render": { "type": "string", "description": "Path to render-recipe.json." },
+    "joinManifest": { "type": "string" },
+    "allowlist": { "type": "string" },
+    "presenceContract": { "type": "string" },
+    "conventions": { "type": "string", "description": "conventions.md the transform leg reads (same file /design-sync uses)." }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "cmp-design-bridge/render-recipe.schema.json",
+  "title": "render-recipe.json — the deterministic frame-render recipe",
+  "type": "object",
+  "required": ["viewport", "dsRuntimeSource", "framesRoot"],
+  "properties": {
+    "bundleRuntime": { "type": "string", "enum": ["per-state-frame"], "default": "per-state-frame", "description": "The hermetic Claude Design runtime: <stateId>.html loads ../_ds/_ds_bundle.js + _<feat>-screen.jsx + _<feat>-data.jsx and self-mounts. (The babel-canvas/esbuild-iife adapters of the local proof are retired — authored frames are self-mounting plain JS.)" },
+    "viewport": {
+      "type": "object",
+      "required": ["logicalWidthCss", "dpr"],
+      "properties": {
+        "logicalWidthCss": { "type": "number", "description": "CSS width the frame is authored at (e.g. 411 to match a w411dp subject capture)." },
+        "dpr": { "type": "number", "description": "Device pixel ratio (e.g. 3 → xxhdpi; 411*3=1233px to match the subject capture)." }
+      }
+    },
+    "stateIdMeta": { "type": "string", "default": "design-state-id", "description": "The <meta name=\"…\"> tag carrying the state-id identity stamp in each frame. Project convention (e.g. 'sb-state-id'); pull keys off it." },
+    "gateCommandTemplate": { "type": "string", "description": "FULL shell command for the app-owned Tier-2 self-regression gate (the framework is gate-tool-agnostic — any Compose screenshot regression tool / device capture works). {module} (captureDir's first segment) and {stateId} are substituted. Omit to run advisory-only (no Tier-2 gate). Example (Gradle): 'cd app-dir && ./gradlew :{module}:feature:verifyScreenshots'." },
+    "settleMs": { "type": "number", "default": 700, "description": "Post-mount settle for charts/layout/fonts." },
+    "dsRuntimeSource": { "type": "string", "description": "configDir-relative dir of this project's committed design-system render runtime (_ds_bundle.js, styles.css, tokens/, fonts/) served at /_ds/. Hash-anchored to the uploaded canvas _ds/. (Climb out with ../ or use an absolute path to reference a runtime built elsewhere in the repo.)" },
+    "dsRuntimeHash": { "type": "string", "description": "Optional pinned sha256 of _ds_bundle.js (pull verifies the local runtime matches the upload)." },
+    "framesRoot": { "type": "string", "description": "Repo-relative dir holding <module>/<stateId>.html frames (+ the shared _<feat>-screen/data.jsx)." }
+  }
+}

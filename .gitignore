@@ -1,0 +1,4 @@
+# the CLI's own dependencies (playwright) — installed via `npm install`, never committed
+node_modules/
+# rendered/scratch output if ever produced inside the plugin (CONFIG owns the real cache)
+*.log

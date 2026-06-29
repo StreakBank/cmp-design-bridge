@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "cmp-design-bridge/allowlist.schema.json",
+  "title": "allowlist.json — accepted cross-framework deviations (suppressed in the fidelity grade)",
+  "description": "Token + render deltas that are intentional, not drift. The grader pairs by RENDERED hex/geometry, never token name. Seed from the project's design-tokens vs Claude Design tokens diff + the known Skia-vs-CSS engine deltas.",
+  "type": "object",
+  "required": ["entries"],
+  "properties": {
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "class", "rule", "suppress"],
+        "properties": {
+          "id": { "type": "string" },
+          "class": { "type": "string", "enum": ["token", "render"], "description": "token = palette/scale deviation; render = engine (Skia line-box, elevation/shadow, AA edges, M3 padding)." },
+          "rule": { "type": "string", "description": "Human description of the accepted deviation." },
+          "suppress": { "type": "string", "description": "The precise condition under which a vision finding is suppressed." },
+          "note": { "type": "string" }
+        }
+      }
+    }
+  }
+}

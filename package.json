@@ -1,0 +1,36 @@
+{
+  "name": "cmp-design-bridge",
+  "version": "0.1.0",
+  "description": "Claude Design → Compose bridge: a deterministic CLI (pull/render/lint/verify) for implementing, updating, and verifying Compose Multiplatform screens against designs authored in Claude Design. Project-agnostic CORE; per-project CONFIG in the consuming repo's .design-bridge/.",
+  "type": "module",
+  "bin": {
+    "cmp-design-bridge": "bin/cmp-design-bridge.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "playwright": "~1.58.2"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "schema/",
+    "skills/",
+    "README.md"
+  ],
+  "keywords": [
+    "claude-design",
+    "compose",
+    "compose-multiplatform",
+    "kmp",
+    "design-to-code",
+    "visual-regression",
+    "cli"
+  ],
+  "license": "MIT",
+  "author": "LadderPicks"
+}
