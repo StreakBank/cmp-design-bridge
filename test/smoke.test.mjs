@@ -10,7 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -63,6 +63,7 @@ function makeFixture(opts = {}) {
     gateCommandTemplate: 'cd app && ./gradlew :{module}:feature:verifyScreenshots',
     dsRuntimeSource: './ds-runtime',
     framesRoot: '.cache/canvas',
+    ...opts.recipeExtra,
   };
   writeFileSync(path.join(configDir, 'render-recipe.json'), JSON.stringify(recipe));
   writeFileSync(path.join(configDir, 'state-inventory.txt'), 'demo-a\n');
@@ -254,20 +255,25 @@ test('CLI: unknown command exits non-zero', () => {
 });
 
 // ── render (gated on a resolvable Chromium; SKIP otherwise) ──────────────────
-test('render produces an isolated PNG from a synthetic frame', async (t) => {
-  // The skip-gate must verify a LAUNCHABLE browser binary, not just that the
-  // playwright module resolves — the module always resolves (it's a dependency),
-  // but `npm install` does NOT download a browser, so a binary-absent CI must
-  // SKIP, not FAIL. Mirror doctor()'s real launch+close (bin/cmp-design-bridge.mjs).
-  let chromiumOk = false;
+// The skip-gate must verify a LAUNCHABLE browser binary, not just that the
+// playwright module resolves — the module always resolves (it's a dependency),
+// but `npm install` does NOT download a browser, so a binary-absent CI must
+// SKIP, not FAIL. Mirrors doctor()'s real launch+close (bin/cmp-design-bridge.mjs).
+async function chromiumLaunchable() {
   try {
     const chromium = resolvePlaywright({});
     const b = await chromium.launch({ headless: true });
     await b.close();
-    chromiumOk = true;
-  } catch { /* playwright module unresolved OR browser binary not installed */ }
-  if (!chromiumOk) { t.skip('Playwright/Chromium not launchable — run `npm install && npx playwright install chromium`'); return; }
+    return true;
+  } catch { return false; } // playwright module unresolved OR browser binary not installed
+}
 
+const pngHeight = (file) => readFileSync(file).readUInt32BE(20); // PNG IHDR height (BE, byte 20)
+
+const SKIP_MSG = 'Playwright/Chromium not launchable — run `npm install && npx playwright install chromium`';
+
+test('render produces an isolated PNG from a synthetic frame', async (t) => {
+  if (!(await chromiumLaunchable())) { t.skip(SKIP_MSG); return; }
   const fx = makeFixture();
   try {
     const cfg = loadConfig(fx.configDir);
@@ -276,5 +282,57 @@ test('render produces an isolated PNG from a synthetic frame', async (t) => {
     assert.ok(existsSync(res.designPng));
     assert.equal(res.manifest.childCount, 1);
     assert.ok(res.manifest.widthOk);
+  } finally { fx.cleanup(); }
+});
+
+test('render clips a tall design to recipe.clipHeight and preserves the natural height', async (t) => {
+  if (!(await chromiumLaunchable())) { t.skip(SKIP_MSG); return; }
+  const fx = makeFixture({ recipeExtra: { clipHeight: 300 } });
+  try {
+    // A frame whose single root child (600px) is taller than the clip height.
+    writeFileSync(path.join(fx.frames, 'demo', 'demo-tall.html'),
+      `<!doctype html><html><head><meta name="sb-state-id" content="demo-tall">
+<link rel="stylesheet" href="../_ds/styles.css"><script src="../_ds/_ds_bundle.js"></script></head>
+<body><div id="root"></div><script>document.getElementById('root').appendChild(Object.assign(
+  document.createElement('div'),{style:'width:411px;height:600px;background:#131924;color:#fff',textContent:'tall'}));</script></body></html>\n`);
+    const cfg = loadConfig(fx.configDir);
+    const res = await renderFrame(cfg, 'demo-tall', {});
+    assert.equal(res.ok, true, JSON.stringify(res.manifest?.renderReasons));
+    assert.equal(res.manifest.clipped, true, 'a 600px child must clip to clipHeight 300');
+    assert.ok(res.manifest.naturalHeightCss >= 500, `natural height preserved (got ${res.manifest.naturalHeightCss})`);
+    assert.equal(res.manifest.capturedHeightCss, 300);
+    // The captured PNG is clipped to clipHeight * dpr (300 * 3 = 900), NOT the natural ~1800.
+    assert.equal(pngHeight(res.designPng), 300 * 3);
+  } finally { fx.cleanup(); }
+});
+
+test('render content-floor: text-less-but-content-ful PASSES; a truly-empty mount FAILS', async (t) => {
+  if (!(await chromiumLaunchable())) { t.skip(SKIP_MSG); return; }
+  const fx = makeFixture();
+  try {
+    // (a) shimmer: NO text, but a non-trivial element subtree → a real render.
+    writeFileSync(path.join(fx.frames, 'demo', 'demo-shimmer.html'),
+      `<!doctype html><html><head><meta name="sb-state-id" content="demo-shimmer">
+<link rel="stylesheet" href="../_ds/styles.css"><script src="../_ds/_ds_bundle.js"></script></head>
+<body><div id="root"></div><script>var c=document.createElement('div');
+c.style='width:411px;height:200px;background:#131924';
+for(var i=0;i<6;i++){var b=document.createElement('div');b.style='width:80px;height:12px;background:#222;margin:8px';c.appendChild(b);}
+document.getElementById('root').appendChild(c);</script></body></html>\n`);
+    // (b) empty: a sized child with NO text AND NO descendants → broken/blank mount.
+    writeFileSync(path.join(fx.frames, 'demo', 'demo-empty.html'),
+      `<!doctype html><html><head><meta name="sb-state-id" content="demo-empty">
+<link rel="stylesheet" href="../_ds/styles.css"><script src="../_ds/_ds_bundle.js"></script></head>
+<body><div id="root"></div><script>document.getElementById('root').appendChild(Object.assign(
+  document.createElement('div'),{style:'width:411px;height:200px;background:#131924'}));</script></body></html>\n`);
+    const cfg = loadConfig(fx.configDir);
+
+    const shimmer = await renderFrame(cfg, 'demo-shimmer', {});
+    assert.equal(shimmer.manifest.textLen, 0, 'shimmer renders no text');
+    assert.ok(shimmer.manifest.descendantCount >= 4, 'shimmer has a real element subtree');
+    assert.equal(shimmer.ok, true, 'a text-less render WITH content must PASS the floor');
+
+    const empty = await renderFrame(cfg, 'demo-empty', {});
+    assert.equal(empty.ok, false, 'a sized-but-empty mount must FAIL the content floor');
+    assert.ok(empty.manifest.renderReasons.some((r) => r.startsWith('blank-render')), JSON.stringify(empty.manifest.renderReasons));
   } finally { fx.cleanup(); }
 });
