@@ -32,5 +32,13 @@
     "cli"
   ],
   "license": "MIT",
-  "author": "LadderPicks"
+  "author": "LadderPicks",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StreakBank/cmp-design-bridge.git"
+  },
+  "homepage": "https://github.com/StreakBank/cmp-design-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/StreakBank/cmp-design-bridge/issues"
+  }
 }
