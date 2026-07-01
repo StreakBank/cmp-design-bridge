@@ -1,6 +1,0 @@
-{
-  "name": "cmp-design-bridge",
-  "description": "Claude Design → Compose bridge: a deterministic CLI (pull/render/lint/verify) plus thin skills for the two model-driven legs (design→idiomatic-Compose transform, cross-framework fidelity verdict). Project-agnostic CORE; per-project CONFIG in the consuming repo's .design-bridge/.",
-  "version": "0.1.0",
-  "author": { "name": "LadderPicks" }
-}

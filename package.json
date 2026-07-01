@@ -19,7 +19,6 @@
     "bin/",
     "lib/",
     "schema/",
-    "skills/",
     "README.md"
   ],
   "keywords": [

@@ -47,7 +47,9 @@ judgment:
 
 3. **Skills → thin on-ramp**: `/design-pull` `/design-transform` `/design-fidelity`
    `/design-push` (gated). The logic lives in the CLI + the model; each skill just
-   calls the `cmp-design-bridge` command and invokes the judgment.
+   calls the `cmp-design-bridge` command and invokes the judgment. The skills ship
+   as a separate Claude Code plugin (`StreakBank/cmp-marketplace`, plugin
+   `cmp-design-bridge`) — this repo is the CLI they call.
 
 ## Terminology: REFERENCE vs SUBJECT
 
@@ -60,20 +62,25 @@ judgment:
   certified-current for free). `cmpScreenshotRoot` + `captureDeriveRule` are the
   seam that locates it.
 
-## Install (standalone)
+## Install
 
 ```bash
-cd cmp-marketplace/plugins/cmp-design-bridge
+npm i -g cmp-design-bridge       # the published CLI
+npx playwright install chromium  # the headless browser the renderer drives
+```
+
+For local development against this repo:
+
+```bash
+git clone https://github.com/StreakBank/cmp-design-bridge.git
+cd cmp-design-bridge
 npm install                      # the CLI's own deps (Playwright)
 npx playwright install chromium  # the headless browser the renderer drives
 npm link                         # exposes `cmp-design-bridge` on PATH (dev)
-# (once published: `npm i -g cmp-design-bridge`)
 npm test                         # the standalone smoke suite (browser-gated render test included)
 ```
 
-Playwright is the CLI's own dependency. Resolution precedence allows an override
-(env `PLAYWRIGHT_FROM` → CONFIG `playwrightFrom` → the plugin's node_modules →
-CWD), so a repo that already has Playwright can point at it.
+Playwright is the CLI's own dependency.
 
 ## CORE / CONFIG
 
