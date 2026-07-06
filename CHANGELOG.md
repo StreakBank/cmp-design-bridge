@@ -30,6 +30,15 @@ The screenshot leg: arbitrary rasters as REFERENCES.
   gate for the screenshot flow. `intake` warns when its stateId is not inventory-enrolled.
 - Tests: intake/imported-verify/scoping/backfill coverage added, including the first tests over
   `verify()` itself.
+- Post-review hardening (3-lens adversarial review): OCR requests the v6/v7 `blocks` output and
+  flattens `blocks[].paragraphs[].lines[].words` (flat `data.words` does not exist there); the OCR
+  worker terminates in `finally` (a leaked worker pinned the event loop and hung the CLI);
+  `verify` reports `referenceExists=false` instead of crashing when the reference PNG is missing;
+  the backfill gate requires a state inventory (info finding otherwise — enrollment is the opt-in);
+  `allowlistFor` fails LOUD on a malformed non-array `states` (fail-open would silently widen a
+  per-state suppression estate-wide); `paletteTopN` joins the CONFIG-overridable knobs; the
+  render-recipe schema documents `clipHeight`/`tokensSource`/`paletteSnapThreshold`/`gridStepDp`/
+  `paletteTopN`; CHANGELOG ships in the tarball; lockfile regenerated for 0.2.0.
 
 ## 0.1.0 — 2026-06-30
 

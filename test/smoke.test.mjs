@@ -22,7 +22,7 @@ import { pull } from '../lib/pull.mjs';
 import { buildGateCommand, verify, allowlistFor } from '../lib/verify.mjs';
 import { resolvePlaywright } from '../lib/util.mjs';
 import { renderFrame } from '../lib/render.mjs';
-import { intake, resolveModuleForImport, parseTokenSource } from '../lib/intake.mjs';
+import { intake, resolveModuleForImport, parseTokenSource, flattenOcrWords } from '../lib/intake.mjs';
 
 const PLUGIN_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const BIN = path.join(PLUGIN_ROOT, 'bin', 'cmp-design-bridge.mjs');
@@ -520,5 +520,52 @@ test('intake records inventory enrollment and the OCR optional-dep status', asyn
     writeFileSync(path.join(fx.configDir, 'state-inventory.txt'), 'demo-a\ndemo-import\n');
     const en = await intake(loadConfig(fx.configDir), 'demo-import', { imagePath: src });
     assert.equal(en.manifest.inventoryEnrolled, true);
+  } finally { fx.cleanup(); }
+});
+
+// ── 0.2.0 review fixes: fail-loud scoping, gate-without-inventory, OCR flatten,
+//    missing-reference gate reachability ─────────────────────────────────────
+
+test('allowlistFor throws on a malformed (non-array) states value — never fails open to global', () => {
+  const cfg = { allowlist: { entries: [{ id: 'bad', class: 'translation', rule: 'r', suppress: 's', states: 'demo-x' }] } };
+  assert.throws(() => allowlistFor(cfg, 'demo-x'), /must be an array/);
+});
+
+test('lint --fail-on-backfill without an inventory does NOT gate (info finding instead)', () => {
+  const fx = makeFixture({ configExtra: { inventoryPath: undefined }, manifest: { rows: [] } });
+  try {
+    // A capture with no frame and NO inventory configured — must not become a finding.
+    writeFileSync(path.join(fx.captureDir, 'demo-b.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const report = lint(loadConfig(fx.configDir), { stamp: false, failOnBackfill: true });
+    assert.equal(report.pass, true, 'no inventory → the gate must not fire');
+    assert.ok(report.findings.some((f) => f.kind === 'BACKFILL_GATE_NO_INVENTORY' && f.severity === 'info'));
+    assert.ok(!report.findings.some((f) => f.kind === 'BACKFILL_REQUIRED'));
+  } finally { fx.cleanup(); }
+});
+
+test('flattenOcrWords: v6/v7 block tree and legacy flat words both flatten', () => {
+  const w = (t, x0) => ({ text: t, confidence: 90, bbox: { x0, y0: 0, x1: x0 + 10, y1: 10 } });
+  const v7 = { blocks: [{ paragraphs: [{ lines: [{ words: [w('a', 0), w('b', 20)] }, { words: [w('c', 40)] }] }] }, { paragraphs: [{ lines: [{ words: [w('d', 60)] }] }] }] };
+  assert.deepEqual(flattenOcrWords(v7).map((x) => x.text), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(flattenOcrWords(v7)[0].bboxPx, { x0: 0, y0: 0, x1: 10, y1: 10 });
+  const legacy = { words: [w('z', 0)] };
+  assert.deepEqual(flattenOcrWords(legacy).map((x) => x.text), ['z']);
+  assert.deepEqual(flattenOcrWords({ blocks: null }), [], 'null blocks → empty');
+});
+
+test('verify imported: a DELETED reference.png reports referenceExists=false instead of crashing', async (t) => {
+  if (!(await chromiumLaunchable())) { t.skip(SKIP_MSG); return; }
+  const fx = makeFixture();
+  try {
+    const src = path.join(fx.root, 'shot.png');
+    await makeSourceScreenshot(src);
+    const cfg = loadConfig(fx.configDir);
+    const res = await intake(cfg, 'demo-import', { imagePath: src });
+    writeFileSync(path.join(fx.captureDir, 'demo-import.png'), readFileSync(res.referencePng));
+    rmSync(res.referencePng); // simulate a cache wipe between intake and verify
+    const v = await verify(cfg, 'demo-import', {});
+    assert.equal(v.packet.gates.referenceExists, false);
+    assert.equal(v.gatesPass, false);
+    assert.ok(existsSync(v.packet.montagePng), 'montage still produced (placeholder reference cell)');
   } finally { fx.cleanup(); }
 });

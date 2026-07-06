@@ -27,7 +27,8 @@
     "bin/",
     "lib/",
     "schema/",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "keywords": [
     "claude-design",

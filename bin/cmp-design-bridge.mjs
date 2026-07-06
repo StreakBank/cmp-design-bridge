@@ -4,12 +4,14 @@
 // `.design-bridge/` CONFIG dir (--config). The two model-driven legs (the
 // design→idiomatic-Compose TRANSFORM and the cross-framework fidelity VERDICT)
 // are NOT here — they live in the thin skills + the model. This CLI owns the
-// reproducible mechanisms: render, lint, pull(-assemble), verify(-packet).
+// reproducible mechanisms: render, lint, pull(-assemble), verify(-packet),
+// intake (screenshot-reference admission).
 //
 //   cmp-design-bridge render  <stateId>  --config <dir> [--out <dir>]
-//   cmp-design-bridge lint                --config <dir> [--no-stamp]
-//   cmp-design-bridge pull                --config <dir>
-//   cmp-design-bridge verify  <stateId>  --config <dir> [--render]
+//   cmp-design-bridge lint                --config <dir> [--no-stamp] [--fail-on-backfill]
+//   cmp-design-bridge pull                --config <dir> [--write-manifest] [--force]
+//   cmp-design-bridge verify  <stateId>  --config <dir> [--render] [--reference imported]
+//   cmp-design-bridge intake  <stateId>  --config <dir> --image <path>
 //   cmp-design-bridge doctor              --config <dir>
 //
 // Runnable by a human, by Claude (via the skills), by CI, or a git-hook — the
@@ -60,6 +62,7 @@ const USAGE = `cmp-design-bridge <command> --config <.design-bridge dir>
   doctor              Sanity-check the CONFIG + toolchain (playwright, runtime, captures)
 
 Flags: --config <dir>  --out <dir>  --render (verify: force re-render)
+       pull: --write-manifest ((re)generate the join-manifest from live frames)  --force (allow shrink)
        lint: --no-stamp  --fail-on-backfill (captured-but-frameless inventory states become findings)
        verify: --reference imported (force the imported-screenshot reference path)
        intake: --image <path>  [--content-box x,y,w,h]  [--module <id>]
