@@ -59,8 +59,9 @@ const USAGE = `cmp-design-bridge <command> --config <.design-bridge dir>
   pull                Verify staged frames (truncation, runtime pin) + emit pull-index
   doctor              Sanity-check the CONFIG + toolchain (playwright, runtime, captures)
 
-Flags: --config <dir>  --out <dir>  --render (verify: force re-render)  --no-stamp (lint)
-       --reference imported (verify: force the imported-screenshot reference path)
+Flags: --config <dir>  --out <dir>  --render (verify: force re-render)
+       lint: --no-stamp  --fail-on-backfill (captured-but-frameless inventory states become findings)
+       verify: --reference imported (force the imported-screenshot reference path)
        intake: --image <path>  [--content-box x,y,w,h]  [--module <id>]
                [--theme-translation none|light-to-dark]`;
 
@@ -116,7 +117,7 @@ async function main() {
       break;
     }
     case 'lint': {
-      const report = lint(cfg, { outDir, stamp: flags.stamp !== false });
+      const report = lint(cfg, { outDir, stamp: flags.stamp !== false, failOnBackfill: flags['fail-on-backfill'] === true });
       printLintReport(report);
       if (!report.pass) process.exit(1);
       break;

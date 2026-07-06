@@ -1,7 +1,7 @@
 {
   "name": "cmp-design-bridge",
-  "version": "0.1.0",
-  "description": "Claude Design → Compose bridge: a deterministic CLI (pull/render/lint/verify) for implementing, updating, and verifying Compose Multiplatform screens against designs authored in Claude Design. Project-agnostic CORE; per-project CONFIG in the consuming repo's .design-bridge/.",
+  "version": "0.2.0",
+  "description": "Claude Design → Compose bridge: a deterministic CLI (pull/render/lint/verify/intake) for implementing, updating, and verifying Compose Multiplatform screens against designs authored in Claude Design — or against imported screenshot references. Project-agnostic CORE; per-project CONFIG in the consuming repo's .design-bridge/.",
   "type": "module",
   "bin": {
     "cmp-design-bridge": "bin/cmp-design-bridge.mjs"
@@ -11,6 +11,14 @@
   },
   "dependencies": {
     "playwright": "~1.58.2"
+  },
+  "peerDependencies": {
+    "tesseract.js": ">=5"
+  },
+  "peerDependenciesMeta": {
+    "tesseract.js": {
+      "optional": true
+    }
   },
   "scripts": {
     "test": "node --test test/*.test.mjs"

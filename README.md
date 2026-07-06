@@ -34,8 +34,12 @@ judgment:
      content-hash revision pinning; a per-module burndown sweep.
    - `pull` — verify staged frames (truncation, DS-runtime hash pin) + (re)generate
      the join-manifest from the live frame inventory.
-   - `verify <stateId>` — build the fidelity packet (REFERENCE design render vs the
-     SUBJECT app screenshot + montage + mechanical gates) the grade consumes.
+   - `verify <stateId>` — build the fidelity packet (REFERENCE vs the SUBJECT app
+     screenshot + montage + mechanical gates) the grade consumes. Two reference
+     modes: a rendered Claude Design frame (default) or an imported screenshot
+     admitted via `intake` (`--reference imported`).
+   - `intake <stateId> --image <path>` — admit an arbitrary raster as the
+     reference for one state (see "Screenshot intake" below).
    - `doctor` — sanity-check CONFIG + toolchain (including a real Chromium launch).
 
 2. **Two model-driven legs → NOT a CLI** (thin skills + the model):
@@ -115,6 +119,52 @@ conformant frame:
 Per-module shared content (`_<module>-screen.jsx` + `_<module>-data.jsx`) lives
 beside the frames; the renderer + pull hash `[frame.html + the `_*.jsx` siblings]`
 together for revision pinning.
+
+## Screenshot intake (imported references)
+
+The pipeline's reference is normally a rendered Claude Design frame. `intake` admits an
+**arbitrary raster** — a Figma export, a competitor's device screenshot, a photo of a mock —
+as the reference for one state:
+
+```bash
+cmp-design-bridge intake my-new-state --config <repo>/.design-bridge \
+  --image shot.png --content-box 0,63,1080,2402 --theme-translation light-to-dark
+cmp-design-bridge verify my-new-state --config <repo>/.design-bridge   # imported mode auto-detected
+```
+
+What `intake` does (deterministic; judgment stays upstream):
+
+1. **Normalize** — crop the DECLARED `--content-box` (deciding which pixels are the screen vs
+   foreign status-bar chrome is a judgment input; the CLI applies it as a pure function),
+   width-fit to the canonical comparison geometry (`viewport.logicalWidthCss × dpr`), and clip
+   anything taller than `clipHeight × dpr` for the grading copy (natural height preserved;
+   `verify` flags `belowFoldRisk`).
+2. **Provenance** — the intake manifest records the source sha256 AND a hash of the transform
+   params. Imported-mode `verify` staleness covers both and **fails loud** (there is no frame to
+   re-render, so nothing self-heals silently).
+3. **Module resolution** — a frame-less state can't use the frame to find its SUBJECT capture;
+   the module comes from `--module` or the longest matching config `statePrefix`.
+4. **Evidence sidecars** for the model legs (never decisions):
+   - a **palette census** (exact-color histogram + coverage) with nearest-token pairing from the
+     optional `render-recipe.tokensSource` (CSS custom properties or flat JSON). Pairing is
+     **suppressed for declared `light-to-dark` inputs** — nearest-hex across a theme boundary is
+     systematically wrong (a light background's nearest dark-theme token is a *text* token); the
+     token list ships for ROLE mapping instead, and the grade instruction switches its color axis
+     to role consistency.
+   - a **dp-grid overlay** variant of the reference (step `render-recipe.gridStepDp`, default 8dp)
+     for direct dp measurement.
+   - an optional **OCR sidecar** — engages only when `tesseract.js` is installed (optional peer
+     dependency: `npm i tesseract.js` in the consuming repo). Advisory evidence only; never
+     authoritative over the raster.
+
+The **design-SoT gate** for screenshot-sourced states: enroll the stateId in the state inventory
+(`intake` warns if you haven't), ship the implementation, then backfill the design frame — and run
+`lint --fail-on-backfill` in CI so a captured-but-frameless enrolled state is a real finding
+(`BACKFILL_REQUIRED`), not a silent burndown line.
+
+Per-state deviations recorded while translating a screenshot into the design system go into the
+allowlist with the new optional `states: ["<stateId>"]` filter (class `translation`) so they
+suppress only there — a per-state delta recorded globally would erode grade sensitivity estate-wide.
 
 ## Quick start
 

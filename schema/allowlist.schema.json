@@ -13,10 +13,15 @@
         "required": ["id", "class", "rule", "suppress"],
         "properties": {
           "id": { "type": "string" },
-          "class": { "type": "string", "enum": ["token", "render"], "description": "token = palette/scale deviation; render = engine (Skia line-box, elevation/shadow, AA edges, M3 padding)." },
+          "class": { "type": "string", "enum": ["token", "render", "translation"], "description": "token = palette/scale deviation; render = engine (Skia line-box, elevation/shadow, AA edges, M3 padding); translation = a deliberate translate-to-the-design-system deviation from an imported screenshot reference." },
           "rule": { "type": "string", "description": "Human description of the accepted deviation." },
           "suppress": { "type": "string", "description": "The precise condition under which a vision finding is suppressed." },
-          "note": { "type": "string" }
+          "note": { "type": "string" },
+          "states": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "OPTIONAL per-state scoping: when present, verify applies this entry ONLY to the listed stateIds. Entries without it keep the global (every-state) semantics. Use for per-state translation deviations — recording one globally would suppress that delta estate-wide and erode grade sensitivity."
+          }
         }
       }
     }

@@ -19,7 +19,7 @@ import { execFileSync } from 'node:child_process';
 import { loadConfig, deriveCapture, locateFrame } from '../lib/config.mjs';
 import { lint } from '../lib/lint.mjs';
 import { pull } from '../lib/pull.mjs';
-import { buildGateCommand, verify } from '../lib/verify.mjs';
+import { buildGateCommand, verify, allowlistFor } from '../lib/verify.mjs';
 import { resolvePlaywright } from '../lib/util.mjs';
 import { renderFrame } from '../lib/render.mjs';
 import { intake, resolveModuleForImport, parseTokenSource } from '../lib/intake.mjs';
@@ -468,5 +468,57 @@ test('verify imported mode: gates + packet + staleness trips on source drift', a
     await intake(cfg, 'demo-a', { imagePath: src, contentBox: { x: 0, y: 40, w: 540, h: 920 } });
     const v3 = await verify(cfg, 'demo-a', { referenceImported: true });
     assert.equal(v3.packet.referenceMode, 'imported', '--reference imported wins over the existing frame');
+  } finally { fx.cleanup(); }
+});
+
+// ── 0.2.0: per-state allowlist scoping, backfill gate, inventory + OCR fields ─
+
+test('allowlistFor: entries are global by default; states[] scopes to listed ids', () => {
+  const cfg = { allowlist: { entries: [
+    { id: 'global-a', class: 'render', rule: 'r', suppress: 's' },
+    { id: 'scoped-b', class: 'translation', rule: 'r', suppress: 's', states: ['demo-x'] },
+  ] } };
+  assert.deepEqual(allowlistFor(cfg, 'demo-x').map((e) => e.id), ['global-a', 'scoped-b']);
+  assert.deepEqual(allowlistFor(cfg, 'demo-y').map((e) => e.id), ['global-a'], 'scoped entry excluded elsewhere');
+  assert.deepEqual(allowlistFor({ allowlist: {} }, 'any'), [], 'missing entries → empty');
+});
+
+test('lint --fail-on-backfill: captured-but-frameless inventory state becomes a real finding', () => {
+  const fx = makeFixture({ manifest: { rows: [{ frameId: 'demo/demo-a.html', stateId: 'demo-a', module: 'demo', cmpCapture: 'DERIVED' }] } });
+  try {
+    // demo-b: capture on disk + inventory-enrolled, but NO frame → backfillQueue.
+    writeFileSync(path.join(fx.captureDir, 'demo-b.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    writeFileSync(path.join(fx.configDir, 'state-inventory.txt'), 'demo-a\ndemo-b\n');
+    const cfg = loadConfig(fx.configDir);
+
+    const soft = lint(cfg, { stamp: false });
+    assert.equal(soft.pass, true, 'without the flag the queue stays informational');
+    assert.ok(soft.burndown.find((b) => b.module === 'demo').backfillQueue.includes('demo-b'));
+
+    const hard = lint(loadConfig(fx.configDir), { stamp: false, failOnBackfill: true });
+    assert.equal(hard.pass, false, 'with the flag the queue is a real finding');
+    assert.ok(hard.findings.some((f) => f.kind === 'BACKFILL_REQUIRED' && f.row === 'demo/demo-b'));
+  } finally { fx.cleanup(); }
+});
+
+test('intake records inventory enrollment and the OCR optional-dep status', async (t) => {
+  if (!(await chromiumLaunchable())) { t.skip(SKIP_MSG); return; }
+  const fx = makeFixture();
+  try {
+    const src = path.join(fx.root, 'shot.png');
+    await makeSourceScreenshot(src);
+    const cfg = loadConfig(fx.configDir);
+
+    // 'demo-import' is NOT in the fixture inventory (only demo-a) → warn field false.
+    const un = await intake(cfg, 'demo-import', { imagePath: src });
+    assert.equal(un.manifest.inventoryEnrolled, false);
+    // OCR: tesseract.js is deliberately not installed here → graceful absence.
+    assert.equal(un.manifest.ocr.available, false);
+    assert.match(un.manifest.ocr.note, /OPTIONAL dependency/);
+
+    // Enroll it → flips true.
+    writeFileSync(path.join(fx.configDir, 'state-inventory.txt'), 'demo-a\ndemo-import\n');
+    const en = await intake(loadConfig(fx.configDir), 'demo-import', { imagePath: src });
+    assert.equal(en.manifest.inventoryEnrolled, true);
   } finally { fx.cleanup(); }
 });
