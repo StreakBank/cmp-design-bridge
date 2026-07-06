@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "cmp-design-bridge/intake-manifest.schema.json",
+  "title": "<stateId>.intake-manifest.json — provenance + evidence for an imported (screenshot) reference",
+  "description": "Written by `intake` alongside <stateId>.reference.png. Verify's imported-reference mode reads it for module resolution, gates, and staleness: notStale requires the live source sha256 AND the params hash to match (there is no re-render to self-heal with — a drifted source or re-declared transform fails loud). The content-box and theme-translation are upstream JUDGMENT inputs the CLI applied as a pure function.",
+  "type": "object",
+  "required": ["stateId", "module", "referenceMode", "sourcePath", "sourceSha256", "sourceDims", "targetWidthPx", "themeTranslation", "paramsHash", "scaleFactor", "naturalHeightPx", "clipped", "referencePng", "gridPng", "intakeOk", "palette"],
+  "properties": {
+    "stateId": { "type": "string" },
+    "module": { "type": "string", "description": "Resolved via --module or the LONGEST matching config statePrefix — a frame-less state cannot use locateFrame, and the SUBJECT capture path derives from the module." },
+    "referenceMode": { "const": "imported" },
+    "sourcePath": { "type": "string" },
+    "sourceSha256": { "type": "string", "pattern": "^sha256:" },
+    "sourceDims": { "type": "object", "properties": { "w": { "type": "integer" }, "h": { "type": "integer" } } },
+    "contentBox": { "type": ["object", "null"], "description": "Declared crop (foreign chrome exclusion). Null = full image.", "properties": { "x": { "type": "integer" }, "y": { "type": "integer" }, "w": { "type": "integer" }, "h": { "type": "integer" } } },
+    "targetWidthPx": { "type": "integer", "description": "viewport.logicalWidthCss × dpr — the canonical comparison width." },
+    "clipHeightPx": { "type": ["integer", "null"] },
+    "themeTranslation": { "type": "string", "enum": ["none", "light-to-dark"], "description": "Declared cross-theme translation. When light-to-dark, palette token pairing is SUPPRESSED (nearest-hex is systematically wrong across a theme boundary) and verify's grade instruction switches the color axis to role consistency." },
+    "gridStepDp": { "type": "integer" },
+    "paramsHash": { "type": "string", "pattern": "^sha256:", "description": "Hash of the transform params — part of the staleness check together with sourceSha256." },
+    "scaleFactor": { "type": "number" },
+    "naturalHeightPx": { "type": "integer", "description": "Pre-clip normalized height. When clipped, belowFold routes below-fold presence items to the Tier-2 gate." },
+    "clipped": { "type": "boolean" },
+    "referencePng": { "type": "string" },
+    "gridPng": { "type": "string", "description": "dp-grid overlay variant — a SEPARATE measuring image; never occludes the clean reference." },
+    "referenceWidthOk": { "type": "boolean" },
+    "intakeOk": { "type": "boolean" },
+    "inventoryEnrolled": { "type": ["boolean", "null"], "description": "Whether stateId is in the state inventory (null = no inventory configured). Un-enrolled states escape the burndown and the `lint --fail-on-backfill` gate — enroll them." },
+    "ocr": {
+      "type": "object",
+      "description": "Optional-dependency OCR sidecar status. ADVISORY evidence only — never authoritative over the raster.",
+      "required": ["available"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "sidecar": { "type": "string" },
+        "engine": { "type": "string" },
+        "wordCount": { "type": "integer" },
+        "note": { "type": "string" }
+      }
+    },
+    "palette": {
+      "type": "object",
+      "description": "Deterministic color census + theme-gated nearest-token pairing (EVIDENCE for the model legs, never a decision).",
+      "required": ["topColors", "themeTranslation", "tokenPairingNote"],
+      "properties": {
+        "topColors": { "type": "array", "items": { "type": "object", "properties": { "hex": { "type": "string" }, "coveragePct": { "type": "number" } } } },
+        "snapThreshold": { "type": "number" },
+        "themeTranslation": { "type": "string" },
+        "tokenPairing": { "type": ["array", "null"], "description": "Null when no tokensSource is configured OR when theme-gated off (cross-theme)." },
+        "tokenPairingNote": { "type": "string" },
+        "tokens": { "type": ["array", "null"] }
+      }
+    }
+  }
+}
