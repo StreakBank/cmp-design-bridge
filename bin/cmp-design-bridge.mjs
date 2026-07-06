@@ -22,6 +22,7 @@ import { renderFrame } from '../lib/render.mjs';
 import { lint, printLintReport } from '../lib/lint.mjs';
 import { pull, printPullReport } from '../lib/pull.mjs';
 import { verify, printVerify } from '../lib/verify.mjs';
+import { intake, printIntake } from '../lib/intake.mjs';
 
 function parseArgs(argv) {
   const positional = [];
@@ -51,12 +52,17 @@ function resolveConfigDir(flags) {
 const USAGE = `cmp-design-bridge <command> --config <.design-bridge dir>
 
   render  <stateId>   Render one Claude Design frame → isolated dark PNG + pull-manifest
-  verify  <stateId>   Build the fidelity packet (design PNG vs CMP capture + montage + gates)
+  verify  <stateId>   Build the fidelity packet (reference vs CMP capture + montage + gates)
+  intake  <stateId>   Admit an arbitrary raster as the reference: normalize to the
+                      canonical geometry + provenance + palette/grid evidence sidecars
   lint                Join-manifest integrity (derive/orphan/pin) + burndown sweep
   pull                Verify staged frames (truncation, runtime pin) + emit pull-index
   doctor              Sanity-check the CONFIG + toolchain (playwright, runtime, captures)
 
-Flags: --config <dir>  --out <dir>  --render (verify: force re-render)  --no-stamp (lint)`;
+Flags: --config <dir>  --out <dir>  --render (verify: force re-render)  --no-stamp (lint)
+       --reference imported (verify: force the imported-screenshot reference path)
+       intake: --image <path>  [--content-box x,y,w,h]  [--module <id>]
+               [--theme-translation none|light-to-dark]`;
 
 async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
@@ -80,9 +86,33 @@ async function main() {
     case 'verify': {
       const stateId = positional[0];
       if (!stateId) { console.error('verify needs a <stateId>'); process.exit(2); }
-      const res = await verify(cfg, stateId, { outDir, render: flags.render === true });
+      if (flags.reference !== undefined && flags.reference !== 'imported') {
+        console.error(`--reference only supports "imported" (got "${flags.reference}")`); process.exit(2);
+      }
+      const res = await verify(cfg, stateId, { outDir, render: flags.render === true, referenceImported: flags.reference === 'imported' });
       printVerify(res);
       if (!res.gatesPass) process.exit(1);
+      break;
+    }
+    case 'intake': {
+      const stateId = positional[0];
+      if (!stateId) { console.error('intake needs a <stateId>'); process.exit(2); }
+      let contentBox = null;
+      if (flags['content-box']) {
+        const parts = String(flags['content-box']).split(',').map((v) => parseInt(v, 10));
+        if (parts.length !== 4 || parts.some((v) => Number.isNaN(v))) {
+          console.error('--content-box must be x,y,w,h (integers)'); process.exit(2);
+        }
+        contentBox = { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
+      }
+      const r = await intake(cfg, stateId, {
+        outDir,
+        imagePath: flags.image,
+        contentBox,
+        module: flags.module,
+        themeTranslation: flags['theme-translation'],
+      });
+      printIntake(r);
       break;
     }
     case 'lint': {

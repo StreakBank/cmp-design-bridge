@@ -19,9 +19,10 @@ import { execFileSync } from 'node:child_process';
 import { loadConfig, deriveCapture, locateFrame } from '../lib/config.mjs';
 import { lint } from '../lib/lint.mjs';
 import { pull } from '../lib/pull.mjs';
-import { buildGateCommand } from '../lib/verify.mjs';
+import { buildGateCommand, verify } from '../lib/verify.mjs';
 import { resolvePlaywright } from '../lib/util.mjs';
 import { renderFrame } from '../lib/render.mjs';
+import { intake, resolveModuleForImport, parseTokenSource } from '../lib/intake.mjs';
 
 const PLUGIN_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const BIN = path.join(PLUGIN_ROOT, 'bin', 'cmp-design-bridge.mjs');
@@ -334,5 +335,138 @@ document.getElementById('root').appendChild(c);</script></body></html>\n`);
     const empty = await renderFrame(cfg, 'demo-empty', {});
     assert.equal(empty.ok, false, 'a sized-but-empty mount must FAIL the content floor');
     assert.ok(empty.manifest.renderReasons.some((r) => r.startsWith('blank-render')), JSON.stringify(empty.manifest.renderReasons));
+  } finally { fx.cleanup(); }
+});
+
+// ── intake + imported-reference verify ───────────────────────────────────────
+// Pure parts run browserless; the end-to-end intake/verify legs are gated on a
+// launchable Chromium like the render tests.
+
+test('resolveModuleForImport: explicit id wins, longest statePrefix matches, no match throws', () => {
+  const fx = makeFixture({ configExtra: { modules: [
+    { id: 'demo', captureDir: 'feature/screenshots', statePrefix: 'demo-' },
+    { id: 'demo-sub', captureDir: 'feature/screenshots', statePrefix: 'demo-sub-' },
+  ] } });
+  try {
+    const cfg = loadConfig(fx.configDir);
+    assert.equal(resolveModuleForImport(cfg, 'anything', 'demo').id, 'demo', 'explicit id wins');
+    assert.throws(() => resolveModuleForImport(cfg, 'x', 'nope'), /not in config.modules/);
+    assert.equal(resolveModuleForImport(cfg, 'demo-sub-a', null).id, 'demo-sub', 'LONGEST prefix wins');
+    assert.equal(resolveModuleForImport(cfg, 'demo-a', null).id, 'demo');
+    assert.throws(() => resolveModuleForImport(cfg, 'other-a', null), /No config module statePrefix matches/);
+  } finally { fx.cleanup(); }
+});
+
+test('parseTokenSource: CSS custom properties (hex + rgba) and flat JSON', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'cdb-tok-'));
+  try {
+    const cssPath = path.join(dir, 'tokens.css');
+    writeFileSync(cssPath, ':root{\n  --bg: #0A0E17;\n  --accent: #00E87B;\n  --accent-dim: rgba(0,232,123,0.15);\n  --short: #fff;\n}\n');
+    const css = parseTokenSource(cssPath);
+    assert.equal(css.length, 4);
+    assert.deepEqual(css.find((t) => t.name === 'bg').rgb, [10, 14, 23]);
+    assert.equal(css.find((t) => t.name === 'accent-dim').alpha, 0.15, 'rgba alpha parsed');
+    assert.deepEqual(css.find((t) => t.name === 'short').rgb, [255, 255, 255], '#fff shorthand');
+    const jsonPath = path.join(dir, 'tokens.json');
+    writeFileSync(jsonPath, JSON.stringify({ Bg: '#0A0E17', Accent: '#00E87B' }));
+    assert.equal(parseTokenSource(jsonPath).length, 2);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// Synthesizes a foreign-geometry "device screenshot": 540x960, a 40px status
+// bar strip on top, dominant #223344 content with a #FF6B35 block.
+async function makeSourceScreenshot(file) {
+  const chromium = resolvePlaywright({});
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 540, height: 960 }, deviceScaleFactor: 1 });
+    await page.setContent(`<body style="margin:0"><div style="width:540px;height:960px">
+      <div style="height:40px;background:#000;color:#0f0;font:12px monospace">12:00 ▮▮▮</div>
+      <div style="height:920px;background:#223344"><div style="width:200px;height:100px;background:#FF6B35"></div>
+        <p style="color:#F0F2F5;font:16px sans-serif;padding:8px">hello screenshot</p></div>
+    </div></body>`);
+    await page.waitForTimeout(50);
+    await page.locator('body > div').screenshot({ path: file });
+  } finally { await browser.close(); }
+}
+
+test('intake normalizes a foreign raster to canonical width, records provenance+params, emits palette + grid', async (t) => {
+  if (!(await chromiumLaunchable())) { t.skip(SKIP_MSG); return; }
+  const fx = makeFixture({ recipeExtra: { clipHeight: 914, tokensSource: './tokens.css', paletteSnapThreshold: 40 } });
+  try {
+    writeFileSync(path.join(fx.configDir, 'tokens.css'), ':root{ --bg: #0A0E17; --card: #223344; --hot: #FF6B35; --text: #F0F2F5; }');
+    const src = path.join(fx.root, 'shot.png');
+    await makeSourceScreenshot(src);
+    const cfg = loadConfig(fx.configDir);
+    const res = await intake(cfg, 'demo-import', { imagePath: src, contentBox: { x: 0, y: 40, w: 540, h: 920 }, themeTranslation: 'none' });
+    assert.equal(res.ok, true);
+    assert.ok(existsSync(res.referencePng) && existsSync(res.gridPng));
+    const refW = readFileSync(res.referencePng).readUInt32BE(16);
+    assert.equal(refW, 411 * 3, 'normalized to canonical width');
+    const m = res.manifest;
+    assert.equal(m.module, 'demo', 'module resolved via statePrefix');
+    assert.match(m.sourceSha256, /^sha256:/);
+    assert.match(m.paramsHash, /^sha256:/);
+    assert.ok(Math.abs(m.scaleFactor - 1233 / 540) < 0.001, `scaleFactor (got ${m.scaleFactor})`);
+    // Clipped: 920 * (1233/540) ≈ 2101 px < 2742 → NOT clipped.
+    assert.equal(m.clipped, false);
+    // Palette: the dominant content fill must pair with its exact token at distance 0.
+    const pair = m.palette.tokenPairing.find((r) => r.observed === '#223344');
+    assert.ok(pair, 'dominant color in census');
+    assert.equal(pair.nearestToken.token, 'card');
+    assert.equal(pair.nearestToken.distance, 0);
+    assert.equal(pair.withinThreshold, true);
+  } finally { fx.cleanup(); }
+});
+
+test('intake theme-gating: light-to-dark suppresses token pairing; bad content-box fails loud', async (t) => {
+  if (!(await chromiumLaunchable())) { t.skip(SKIP_MSG); return; }
+  const fx = makeFixture({ recipeExtra: { tokensSource: './tokens.css' } });
+  try {
+    writeFileSync(path.join(fx.configDir, 'tokens.css'), ':root{ --bg: #0A0E17; }');
+    const src = path.join(fx.root, 'shot.png');
+    await makeSourceScreenshot(src);
+    const cfg = loadConfig(fx.configDir);
+    const res = await intake(cfg, 'demo-light', { imagePath: src, themeTranslation: 'light-to-dark' });
+    assert.equal(res.manifest.palette.tokenPairing, null, 'pairing suppressed cross-theme');
+    assert.match(res.manifest.palette.tokenPairingNote, /SUPPRESSED/);
+    assert.ok(res.manifest.palette.tokens.length > 0, 'token list still shipped for role mapping');
+    await assert.rejects(
+      () => intake(cfg, 'demo-bad', { imagePath: src, contentBox: { x: 0, y: 0, w: 9999, h: 10 } }),
+      /out of source bounds/,
+    );
+  } finally { fx.cleanup(); }
+});
+
+test('verify imported mode: gates + packet + staleness trips on source drift', async (t) => {
+  if (!(await chromiumLaunchable())) { t.skip(SKIP_MSG); return; }
+  const fx = makeFixture();
+  try {
+    const src = path.join(fx.root, 'shot.png');
+    await makeSourceScreenshot(src);
+    const cfg = loadConfig(fx.configDir);
+    const res = await intake(cfg, 'demo-import', { imagePath: src, contentBox: { x: 0, y: 40, w: 540, h: 920 } });
+    // Subject: reuse the reference bytes at the derived capture path (existence + IHDR only).
+    const cmpPath = path.join(fx.captureDir, 'demo-import.png');
+    writeFileSync(cmpPath, readFileSync(res.referencePng));
+
+    const v1 = await verify(cfg, 'demo-import', {});
+    assert.equal(v1.packet.referenceMode, 'imported', 'auto-detected (no frame, manifest present)');
+    assert.equal(v1.gatesPass, true, JSON.stringify(v1.packet.gates));
+    assert.ok(existsSync(v1.packet.montagePng));
+    assert.equal(v1.packet.intake.sourceSha256, res.manifest.sourceSha256);
+    assert.ok(!v1.packet.gradeInstruction.includes('THEME TRANSLATION'));
+
+    // Source drift → notStale false, gatesPass false (fail-loud, no self-heal).
+    writeFileSync(src, readFileSync(src).subarray(0, 100));
+    const v2 = await verify(cfg, 'demo-import', {});
+    assert.equal(v2.packet.gates.notStale, false, 'source drift must trip staleness');
+    assert.equal(v2.gatesPass, false);
+
+    // Explicit flag on a frame-ful state forces the imported path (spike shape).
+    await makeSourceScreenshot(src);
+    await intake(cfg, 'demo-a', { imagePath: src, contentBox: { x: 0, y: 40, w: 540, h: 920 } });
+    const v3 = await verify(cfg, 'demo-a', { referenceImported: true });
+    assert.equal(v3.packet.referenceMode, 'imported', '--reference imported wins over the existing frame');
   } finally { fx.cleanup(); }
 });
